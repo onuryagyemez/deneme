@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Turkish IPTV Player</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #1a1a1a;
+            font-family: Arial, sans-serif;
+            display: grid;
+            grid-template-columns: var(--sidebar-width, 300px) 1fr;
+            height: 100vh;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        #channel-list {
+            background: #2a2a2a;
+            color: white;
+            overflow-y: auto;
+            padding: 10px;
+            scrollbar-width: thin;
+            scrollbar-color: #555 #2a2a2a;
+        }
+
+        /* For WebKit browsers */
+        #channel-list::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        #channel-list::-webkit-scrollbar-track {
+            background: #2a2a2a;
+        }
+
+        #channel-list::-webkit-scrollbar-thumb {
+            background-color: #555;
+            border-radius: 2px;
+        }
+
+        .channel-item {
+            padding: 10px;
+            margin: 5px 0;
+            background: #333;
+            border-radius: 5px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            transition: background 0.3s;
+        }
+
+        .channel-item:hover {
+            background: #444;
+        }
+
+        .channel-logo {
+            width: 30px;
+            height: 30px;
+            margin-right: 10px;
+            border-radius: 50%;
+        }
+
+        #player-container {
+            background: black;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #video-player {
+            width: 100%;
+            height: 100%;
+            max-width: 1280px;
+        }
+
+        .group-title {
+            color: #888;
+            margin: 15px 0 5px;
+            font-size: 0.9em;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            padding: 5px;
+            border-radius: 3px;
+        }
+
+        .group-title:hover {
+            background: #333;
+        }
+
+        .group-title::before {
+            content: '▼';
+            font-size: 0.7em;
+            margin-right: 8px;
+            transition: transform 0.2s;
+        }
+
+        .group-title.collapsed::before {
+            content: '▶';
+        }
+
+        .group-channels {
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .group-channels.collapsed {
+            max-height: 0 !important;
+        }
+
+        /* Add toggle button styling */
+        .sidebar-toggle {
+            position: absolute;
+            left: var(--sidebar-width, 300px);
+            top: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 100;
+            background: #444;
+            border: none;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+
+        .sidebar-toggle:hover {
+            background: #555;
+        }
+
+        /* Add collapsed state */
+        body.collapsed {
+            --sidebar-width: 60px;
+        }
+
+        body.collapsed .channel-item > div {
+            display: none;
+        }
+
+        body.collapsed .group-title {
+            display: none;
+        }
+
+        body.collapsed .channel-logo {
+            margin-right: 0;
+        }
+    </style>
+</head>
+<body>
+    <!-- Add toggle button at the top of the body -->
+    <button class="sidebar-toggle" onclick="toggleSidebar()">☰</button>
+    <div id="channel-list"></div>
+    <div id="player-container">
+        <video id="video-player" controls></video>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script>
+        const M3U_URL = 'http://stream.tvcdn.net/lists/tr.m3u';
+        const channelList = document.getElementById('channel-list');
+        const videoPlayer = document.getElementById('video-player');
+
+        async function loadPlaylist() {
+            try {
+                const response = await fetch(M3U_URL);
+                const playlist = await response.text();
+                const channels = parseM3U(playlist);
+                renderChannelList(channels);
+            } catch (error) {
+                console.error('Error loading playlist:', error);
+            }
+        }
+
+        function parseM3U(content) {
+            const channels = [];
+            const lines = content.split('\n');
+            
+            for (let i = 0; i < lines.length; i++) {
+                if (lines[i].startsWith('#EXTINF')) {
+                    const match = lines[i].match(/-1 tvg-id="(.*?)" tvg-logo="(.*?)".*group-title="(.*?)",(.*)/);
+                    if (match) {
+                        channels.push({
+                            name: match[4],
+                            logo: match[2],
+                            group: match[3],
+                            url: lines[i+1]
+                        });
+                    }
+                    i++; // Skip next line (URL)
+                }
+            }
+            return channels;
+        }
+
+        function renderChannelList(channels) {
+            let currentGroup = '';
+            channelList.innerHTML = '';
+            let groupContainer;
+            
+            channels.forEach((channel, index) => {
+                if (channel.group !== currentGroup) {
+                    currentGroup = channel.group;
+                    // Create group container
+                    groupContainer = document.createElement('div');
+                    
+                    // Create group title
+                    const groupTitle = document.createElement('div');
+                    groupTitle.className = 'group-title';
+                    groupTitle.innerHTML = `
+                        <span>${currentGroup}</span>
+                    `;
+                    
+                    // Create channels container
+                    const channelsContainer = document.createElement('div');
+                    channelsContainer.className = 'group-channels';
+                    
+                    // Toggle click handler
+                    groupTitle.addEventListener('click', function() {
+                        this.classList.toggle('collapsed');
+                        channelsContainer.classList.toggle('collapsed');
+                    });
+
+                    groupContainer.appendChild(groupTitle);
+                    groupContainer.appendChild(channelsContainer);
+                    channelList.appendChild(groupContainer);
+                }
+
+                const channelElement = document.createElement('div');
+                channelElement.className = 'channel-item';
+                channelElement.innerHTML = `
+                    <img src="${channel.logo}" class="channel-logo" onerror="this.style.display='none'">
+                    <div>
+                        <div>${channel.name}</div>
+                    </div>
+                `;
+
+                channelElement.addEventListener('click', () => playChannel(channel.url));
+                groupContainer.querySelector('.group-channels').appendChild(channelElement);
+            });
+
+            // Set initial heights for animation
+            document.querySelectorAll('.group-channels').forEach(container => {
+                container.style.maxHeight = container.scrollHeight + 'px';
+            });
+        }
+
+        function playChannel(url) {
+            if (Hls.isSupported()) {
+                const hls = new Hls();
+                hls.loadSource(url);
+                hls.attachMedia(videoPlayer);
+                hls.on(Hls.Events.MANIFEST_PARSED, () => videoPlayer.play());
+            } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
+                videoPlayer.src = url;
+                videoPlayer.addEventListener('loadedmetadata', () => videoPlayer.play());
+            }
+        }
+
+        // Add toggle function
+        function toggleSidebar() {
+            document.body.classList.toggle('collapsed');
+            const toggleBtn = document.querySelector('.sidebar-toggle');
+            toggleBtn.style.left = document.body.classList.contains('collapsed') 
+                ? 'var(--sidebar-width, 60px)' 
+                : 'var(--sidebar-width, 300px)';
+        }
+
+        // Initialize
+        loadPlaylist();
+    </script>
+</body>
+</html> 
